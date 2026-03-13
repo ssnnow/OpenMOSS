@@ -13,7 +13,7 @@ from app.models.reward_log import RewardLog
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 100
 AGENT_ROLES = {"planner", "executor", "reviewer", "patrol"}
-AGENT_STATUSES = {"available", "busy", "offline"}
+AGENT_STATUSES = {"active", "disabled"}
 SCORE_SIGNS = {"positive", "negative"}
 
 

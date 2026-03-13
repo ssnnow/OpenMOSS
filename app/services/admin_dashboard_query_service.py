@@ -17,7 +17,7 @@ from app.models.task import Task
 
 TASK_STATUSES = ("planning", "active", "in_progress", "completed", "archived", "cancelled")
 SUB_TASK_STATUSES = ("pending", "assigned", "in_progress", "review", "rework", "blocked", "done", "cancelled")
-AGENT_STATUSES = ("available", "busy", "offline")
+AGENT_STATUSES = ("active", "disabled")
 AGENT_ROLES = ("planner", "executor", "reviewer", "patrol")
 REVIEW_RESULTS = ("approved", "rejected")
 REVIEW_WINDOW_DAYS = 7
@@ -88,11 +88,11 @@ def get_dashboard_overview(db: Session) -> dict:
             ),
             "review_queue_count": sub_task_status_distribution["review"],
             "blocked_sub_task_count": sub_task_status_distribution["blocked"],
-            "available_agent_count": agent_status_distribution["available"],
+            "active_agent_count": agent_status_distribution["active"],
             "today_completed_sub_task_count": today_completed_sub_task_count,
         },
         "secondary_cards": {
-            "offline_agent_count": agent_status_distribution["offline"],
+            "disabled_agent_count": agent_status_distribution["disabled"],
             "today_review_count": today_review_count,
             "today_rejected_review_count": today_rejected_review_count,
             "today_reject_rate": today_reject_rate,
@@ -402,7 +402,7 @@ def _list_sub_task_highlights(db: Session, status: str, limit: int) -> list[dict
 def _list_busy_agents(db: Session, limit: int, workload_stats, request_stats, activity_stats) -> list[dict]:
     """查询当前最忙的 Agent 列表"""
     open_count = func.coalesce(workload_stats.c.open_sub_task_count, 0)
-    busy_first = case((Agent.status == "busy", 0), else_=1)
+    disabled_last = case((Agent.status == "disabled", 1), else_=0)
 
     rows = (
         db.query(
@@ -421,7 +421,7 @@ def _list_busy_agents(db: Session, limit: int, workload_stats, request_stats, ac
         .filter(open_count > 0)
         .order_by(
             desc(open_count),
-            asc(busy_first),
+            asc(disabled_last),
             desc(request_stats.c.last_request_at),
             desc(activity_stats.c.last_activity_at),
             asc(Agent.created_at),

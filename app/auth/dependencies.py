@@ -30,8 +30,8 @@ async def get_current_agent(
     if not agent:
         raise HTTPException(status_code=401, detail="无效的 API Key")
 
-    if agent.status == "offline":
-        raise HTTPException(status_code=403, detail="Agent 已离线，无法操作")
+    if agent.status == "disabled":
+        raise HTTPException(status_code=403, detail="Agent 已禁用，无法操作")
 
     return agent
 

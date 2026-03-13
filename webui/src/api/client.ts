@@ -191,7 +191,7 @@ export const adminAgentApi = {
     api.get<AdminAgentDetail>(`/admin/agents/${agentId}`),
   updateProfile: (
     agentId: string,
-    data: { name?: string; description?: string },
+    data: { name?: string; role?: string; description?: string },
   ) => api.put(`/admin/agents/${agentId}`, data),
   updateStatus: (agentId: string, status: string) =>
     api.put(`/admin/agents/${agentId}/status`, { status }),
@@ -201,6 +201,10 @@ export const adminAgentApi = {
     api.get(`/admin/agents/${agentId}/activity-logs`, { params }),
   requestLogs: (agentId: string, params?: { page?: number; page_size?: number; days?: number; method?: string; path_keyword?: string }) =>
     api.get(`/admin/agents/${agentId}/request-logs`, { params }),
+  relatedCounts: (agentId: string) =>
+    api.get(`/admin/agents/${agentId}/related-counts`),
+  deleteAgent: (agentId: string, confirmName: string) =>
+    api.delete(`/admin/agents/${agentId}`, { data: { confirm_name: confirmName } }),
 }
 
 export const adminTaskApi = {
@@ -243,12 +247,12 @@ export interface DashboardCoreCards {
   active_sub_task_count: number
   review_queue_count: number
   blocked_sub_task_count: number
-  available_agent_count: number
+  active_agent_count: number
   today_completed_sub_task_count: number
 }
 
 export interface DashboardSecondaryCards {
-  offline_agent_count: number
+  disabled_agent_count: number
   today_review_count: number
   today_rejected_review_count: number
   today_reject_rate: number

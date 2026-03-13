@@ -17,7 +17,7 @@ from app.models.sub_task import SubTask
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 100
 AGENT_ROLES = {"planner", "executor", "reviewer", "patrol"}
-AGENT_STATUSES = {"available", "busy", "offline"}
+AGENT_STATUSES = {"active", "disabled"}
 REQUEST_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE"}
 
 

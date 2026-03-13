@@ -47,7 +47,7 @@ class AgentRegisterResponse(BaseModel):
 
 
 class AgentStatusRequest(BaseModel):
-    status: str = Field(..., description="状态: available/busy/offline")
+    status: str = Field(..., description="状态: active/disabled")
 
 
 # ============================================================

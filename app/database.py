@@ -53,8 +53,35 @@ def init_db():
     Base.metadata.create_all(bind=engine)
     print(f"[Database] 数据库初始化完成，共 {len(Base.metadata.tables)} 张表")
 
+    # 静默迁移旧状态值（available/busy → active，offline → disabled）
+    _migrate_agent_statuses()
+
     # 首次启动时，自动导入全局规则模板
     _load_default_rules()
+
+
+def _migrate_agent_statuses():
+    """静默迁移旧 Agent 状态值，仅影响 available/busy/offline"""
+    from sqlalchemy import text
+
+    db = SessionLocal()
+    try:
+        r1 = db.execute(
+            text("UPDATE agent SET status = 'active' WHERE status IN ('available', 'busy')")
+        )
+        r2 = db.execute(
+            text("UPDATE agent SET status = 'disabled' WHERE status = 'offline'")
+        )
+        total = r1.rowcount + r2.rowcount
+        if total:
+            db.commit()
+            print(f"[Database] 已静默迁移 {total} 个 Agent 状态（旧值 → active/disabled）")
+        else:
+            db.rollback()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
 
 
 def _load_default_rules():

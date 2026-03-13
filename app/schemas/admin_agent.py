@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 
 AgentRole = Literal["planner", "executor", "reviewer", "patrol"]
-AgentStatus = Literal["available", "busy", "offline"]
+AgentStatus = Literal["active", "disabled"]
 
 
 class AdminAgentWorkloadMixin(BaseModel):
@@ -126,6 +126,7 @@ class AdminAgentStatusUpdateRequest(BaseModel):
 
 class AdminAgentUpdateRequest(BaseModel):
     name: Optional[str] = Field(None, description="Agent 名称", max_length=100)
+    role: Optional[AgentRole] = Field(None, description="角色类型")
     description: Optional[str] = Field(None, description="职责简要")
 
 
@@ -142,3 +143,29 @@ class AdminAgentResetKeyResponse(BaseModel):
     agent_id: str
     new_api_key: str
     message: str = "API Key 已重置"
+
+
+class AdminAgentDeleteRequest(BaseModel):
+    confirm_name: str = Field(..., description="输入 Agent 名称以确认删除")
+
+
+class AdminAgentDeleteResponse(BaseModel):
+    message: str = "Agent 已删除"
+    agent_name: str
+    sub_task_count: int = 0
+    review_count: int = 0
+    reward_count: int = 0
+    activity_count: int = 0
+    patrol_count: int = 0
+    request_count: int = 0
+
+
+class AdminAgentRelatedCountsResponse(BaseModel):
+    agent_id: str
+    agent_name: str
+    sub_task_count: int = 0
+    review_count: int = 0
+    reward_count: int = 0
+    activity_count: int = 0
+    patrol_count: int = 0
+    request_count: int = 0

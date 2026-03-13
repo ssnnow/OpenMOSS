@@ -19,6 +19,7 @@ import {
     RefreshCw,
     Loader2,
     AlertCircle,
+    AlertTriangle,
     Users,
     ArrowLeft,
     ArrowRight,
@@ -26,11 +27,26 @@ import {
     Copy,
     Check,
     Pencil,
+    Trash2,
+    ChevronLeft,
+    ToggleLeft,
+    ToggleRight,
 } from 'lucide-vue-next'
 
 // ─── 状态 ───
 
 const PAGE_SIZE = 20
+const mode = ref<'list' | 'detail'>('list')
+
+// 消息提示
+const message = ref('')
+const messageType = ref<'success' | 'error'>('success')
+
+function showMessage(text: string, type: 'success' | 'error' = 'success') {
+    message.value = text
+    messageType.value = type
+    setTimeout(() => { message.value = '' }, 3000)
+}
 
 const keyword = ref('')
 const roleFilter = ref('all')
@@ -73,21 +89,21 @@ function formatRole(role: string) {
 
 function getRoleBadgeClass(role: string) {
     return ({
-        planner: 'border-violet-200 bg-violet-50 text-violet-700',
-        executor: 'border-sky-200 bg-sky-50 text-sky-700',
-        reviewer: 'border-amber-200 bg-amber-50 text-amber-700',
-        patrol: 'border-teal-200 bg-teal-50 text-teal-700',
+        planner: 'border-violet-200 bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-800',
+        executor: 'border-sky-200 bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800',
+        reviewer: 'border-amber-200 bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800',
+        patrol: 'border-teal-200 bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300 dark:border-teal-800',
     }[role] ?? 'border-border bg-muted text-muted-foreground')
 }
 
 function formatStatus(status: string) {
-    return ({ available: '在线', busy: '忙碌' }[status] ?? status)
+    return ({ active: '工作中', disabled: '已禁用' }[status] ?? status)
 }
 
 function getStatusDotClass(status: string) {
     return ({
-        available: 'bg-emerald-500',
-        busy: 'bg-amber-500 animate-pulse',
+        active: 'bg-emerald-500',
+        disabled: 'bg-gray-400',
     }[status] ?? 'bg-slate-400')
 }
 
@@ -147,39 +163,12 @@ async function loadAgents() {
         })
 
         if (requestId !== listRequestId) return
-
         pageData.value = response.data
-
-        if (!response.data.items.length) {
-            selectedAgentId.value = null
-            selectedAgent.value = null
-            return
-        }
-
-        const firstAgent = response.data.items[0]
-        if (!firstAgent) {
-            selectedAgentId.value = null
-            selectedAgent.value = null
-            return
-        }
-        const currentIds = new Set(response.data.items.map(i => i.id))
-        const nextId =
-            selectedAgentId.value && currentIds.has(selectedAgentId.value)
-                ? selectedAgentId.value
-                : firstAgent.id
-
-        const prevId = selectedAgentId.value
-        selectedAgentId.value = nextId
-        if (nextId !== prevId || !selectedAgent.value) {
-            void loadAgentDetail(nextId)
-        }
     } catch (error) {
         if (requestId !== listRequestId) return
         console.error('Failed to load agents', error)
         listError.value = 'Agent 列表加载失败，请稍后再试。'
         pageData.value = createEmptyPage<AdminAgentItem>()
-        selectedAgentId.value = null
-        selectedAgent.value = null
     } finally {
         if (requestId === listRequestId) loading.value = false
     }
@@ -205,10 +194,14 @@ async function loadAgentDetail(agentId: string) {
     }
 }
 
-function selectAgent(agentId: string) {
-    if (selectedAgentId.value === agentId) return
+function openDetail(agentId: string) {
     selectedAgentId.value = agentId
     void loadAgentDetail(agentId)
+    mode.value = 'detail'
+}
+
+function goBackToList() {
+    mode.value = 'list'
 }
 
 function goToPage(p: number) {
@@ -235,18 +228,36 @@ const showNewKeyDialog = ref(false)
 const newApiKey = ref('')
 const resettingKey = ref(false)
 const keyCopied = ref(false)
+const togglingStatus = ref(false)
 
-// 改名/改描述
+// 改名/改角色/改描述
 const showEditDialog = ref(false)
 const editName = ref('')
+const editRole = ref('')
 const editDescription = ref('')
 const editError = ref('')
 const savingEdit = ref(false)
 
+const roleChanged = computed(() =>
+    selectedAgent.value ? editRole.value !== selectedAgent.value.role : false
+)
+
 function openEditDialog() {
     if (!selectedAgent.value) return
     editName.value = selectedAgent.value.name
+    editRole.value = selectedAgent.value.role
     editDescription.value = selectedAgent.value.description ?? ''
+    editError.value = ''
+    showEditDialog.value = true
+}
+
+// 也支持从卡片直接编辑
+function openEditDialogForAgent(agent: AdminAgentItem) {
+    selectedAgentId.value = agent.id
+    selectedAgent.value = agent as unknown as AdminAgentDetail
+    editName.value = agent.name
+    editRole.value = agent.role
+    editDescription.value = agent.description ?? ''
     editError.value = ''
     showEditDialog.value = true
 }
@@ -260,16 +271,50 @@ async function handleSaveEdit() {
     try {
         await adminAgentApi.updateProfile(selectedAgentId.value, {
             name,
+            role: roleChanged.value ? editRole.value : undefined,
             description: editDescription.value,
         })
         showEditDialog.value = false
-        void loadAgentDetail(selectedAgentId.value)
+        showMessage(`${editName.value} 信息已更新`)
+        if (mode.value === 'detail') {
+            void loadAgentDetail(selectedAgentId.value)
+        }
         void loadAgents()
     } catch (err: unknown) {
         const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
         editError.value = msg ?? '保存失败，请重试'
+        showMessage(editError.value, 'error')
     } finally {
         savingEdit.value = false
+    }
+}
+
+// 启用/禁用确认
+const showToggleConfirm = ref(false)
+const toggleTarget = ref<{ id: string; name: string; status: string } | null>(null)
+
+function confirmToggleStatus(agent: { id: string; name?: string; status: string }) {
+    toggleTarget.value = { id: agent.id, name: agent.name ?? selectedAgent.value?.name ?? '', status: agent.status }
+    showToggleConfirm.value = true
+}
+
+async function handleToggleStatus() {
+    if (!toggleTarget.value) return
+    showToggleConfirm.value = false
+    togglingStatus.value = true
+    const newStatus = toggleTarget.value.status === 'active' ? 'disabled' : 'active'
+    try {
+        await adminAgentApi.updateStatus(toggleTarget.value.id, newStatus)
+        if (mode.value === 'detail' && selectedAgentId.value === toggleTarget.value.id) {
+            void loadAgentDetail(toggleTarget.value.id)
+        }
+        void loadAgents()
+        showMessage(newStatus === 'active' ? `${toggleTarget.value.name} 已被启用` : `${toggleTarget.value.name} 已被禁用`)
+    } catch (err) {
+        console.error('Failed to toggle status', err)
+        showMessage('状态切换失败', 'error')
+    } finally {
+        togglingStatus.value = false
     }
 }
 
@@ -297,295 +342,411 @@ async function copyNewKey() {
         // fallback: select text
     }
 }
+
+// 删除 Agent
+const showDeleteDialog = ref(false)
+const deleteConfirmInput = ref('')
+const deletingAgent = ref(false)
+const deleteError = ref('')
+const relatedCounts = ref<Record<string, number> | null>(null)
+const loadingCounts = ref(false)
+
+const deleteConfirmValid = computed(() =>
+    selectedAgent.value
+        ? deleteConfirmInput.value.trim() === `确认删除${selectedAgent.value.name}`
+        : false
+)
+
+async function openDeleteDialog() {
+    if (!selectedAgentId.value || !selectedAgent.value) return
+    deleteConfirmInput.value = ''
+    deleteError.value = ''
+    relatedCounts.value = null
+    showDeleteDialog.value = true
+    loadingCounts.value = true
+    try {
+        const res = await adminAgentApi.relatedCounts(selectedAgentId.value)
+        relatedCounts.value = res.data
+    } catch {
+        relatedCounts.value = null
+    } finally {
+        loadingCounts.value = false
+    }
+}
+
+// 从卡片上直接删除
+function openDeleteDialogForAgent(agent: AdminAgentItem) {
+    selectedAgentId.value = agent.id
+    selectedAgent.value = agent as unknown as AdminAgentDetail
+    void openDeleteDialog()
+}
+
+async function handleDeleteAgent() {
+    if (!selectedAgentId.value || !selectedAgent.value || !deleteConfirmValid.value) return
+    deletingAgent.value = true
+    deleteError.value = ''
+    try {
+        await adminAgentApi.deleteAgent(selectedAgentId.value, selectedAgent.value.name)
+        showDeleteDialog.value = false
+        showMessage(`${selectedAgent.value.name} 已被删除`)
+        selectedAgentId.value = null
+        selectedAgent.value = null
+        if (mode.value === 'detail') mode.value = 'list'
+        void loadAgents()
+    } catch (err: unknown) {
+        const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+        deleteError.value = msg ?? '删除失败，请重试'
+    } finally {
+        deletingAgent.value = false
+    }
+}
 </script>
 
 <template>
-    <TooltipProvider>
-        <div class="flex flex-col h-[calc(100vh-3.5rem)]">
-            <!-- ─── 顶栏：搜索 + 筛选 + 刷新 ─── -->
-            <header class="shrink-0 border-b border-border/40 bg-background px-4 py-3 space-y-2.5">
-                <div class="flex items-center gap-3">
-                    <div class="relative flex-1 max-w-md">
-                        <Search
-                            class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input v-model="keyword" class="h-9 bg-muted/30 pl-10 text-sm" placeholder="搜索 Agent 名称或描述…" />
-                    </div>
-                    <Badge variant="secondary" class="h-7 px-2.5 text-xs tabular-nums shrink-0">
-                        {{ pageData.total }} 个 Agent
-                    </Badge>
-                    <Button variant="ghost" size="icon" class="h-8 w-8 shrink-0" :disabled="loading || loadingDetail"
-                        @click="refreshList">
-                        <RefreshCw class="h-3.5 w-3.5" :class="loading || loadingDetail ? 'animate-spin' : ''" />
-                    </Button>
-                </div>
+    <div class="p-6 max-w-6xl mx-auto">
 
-                <div class="flex items-center gap-4">
-                    <div class="flex flex-wrap gap-1.5">
-                        <Button v-for="option in roleOptions" :key="option.value" size="sm"
-                            :variant="roleFilter === option.value ? 'default' : 'ghost'"
-                            class="h-7 rounded-full px-3 text-xs" @click="roleFilter = option.value">
-                            {{ option.label }}
+        <!-- 消息提示 -->
+        <Transition name="toast">
+            <div v-if="message"
+                class="fixed top-6 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-2.5 rounded-xl px-5 py-3 text-sm font-medium shadow-xl ring-1 ring-black/5 backdrop-blur-md"
+                :class="messageType === 'success'
+                    ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/90 dark:text-emerald-200'
+                    : 'bg-red-50 text-red-800 dark:bg-red-950/90 dark:text-red-200'">
+                <span class="text-base">{{ messageType === 'success' ? '✅' : '❌' }}</span>
+                {{ message }}
+            </div>
+        </Transition>
+
+        <!-- 视图过渡 -->
+        <Transition name="view" mode="out-in" appear>
+
+            <!-- ════════════════ 列表视图 ════════════════ -->
+            <div v-if="mode === 'list'" key="list" class="space-y-5">
+
+                <!-- 顶栏 -->
+                <div class="flex items-center justify-between gap-4">
+                    <div class="flex items-center gap-3">
+                        <h1 class="text-xl font-bold">Agent 管理</h1>
+                        <Badge variant="secondary" class="h-6 px-2 text-xs tabular-nums">
+                            {{ pageData.total }} 个
+                        </Badge>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <div class="relative">
+                            <Search
+                                class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                            <Input v-model="keyword" class="h-9 w-56 bg-muted/30 pl-10 text-sm"
+                                placeholder="搜索名称或描述…" />
+                        </div>
+                        <Button variant="ghost" size="icon" class="h-9 w-9" :disabled="loading" @click="refreshList">
+                            <RefreshCw class="h-4 w-4" :class="loading ? 'animate-spin' : ''" />
                         </Button>
                     </div>
                 </div>
-            </header>
 
-            <!-- ─── 主体：左列表 + 右详情 ─── -->
-            <div class="flex flex-1 min-h-0">
-                <!-- Agent 列表 -->
-                <div class="w-full lg:w-[380px] xl:w-[420px] shrink-0 border-r border-border/40 overflow-y-auto">
-                    <!-- 错误 -->
-                    <div v-if="listError" class="p-6 text-center">
-                        <AlertCircle class="mx-auto h-5 w-5 text-muted-foreground" />
-                        <p class="mt-2 text-sm">{{ listError }}</p>
-                        <Button class="mt-3" size="sm" @click="refreshList">重新加载</Button>
-                    </div>
+                <!-- 角色筛选 -->
+                <div class="flex gap-1.5">
+                    <Button v-for="option in roleOptions" :key="option.value" size="sm"
+                        :variant="roleFilter === option.value ? 'default' : 'ghost'"
+                        class="h-7 rounded-full px-3 text-xs" @click="roleFilter = option.value">
+                        {{ option.label }}
+                    </Button>
+                </div>
 
-                    <!-- 加载中 -->
-                    <div v-else-if="loading" class="flex items-center justify-center py-16">
-                        <Loader2 class="h-6 w-6 animate-spin text-muted-foreground" />
-                    </div>
+                <!-- 加载中 -->
+                <div v-if="loading" class="flex items-center justify-center py-20">
+                    <Loader2 class="h-7 w-7 animate-spin text-muted-foreground" />
+                </div>
 
-                    <!-- Agent 卡片列表 -->
-                    <template v-else-if="pageData.items.length">
-                        <div :key="`agents-${page}-${roleFilter}-${keyword}`" class="divide-y divide-border/30">
-                            <button v-for="(agent, idx) in pageData.items" :key="agent.id" type="button"
-                                class="w-full px-4 py-3 text-left transition-colors hover:bg-muted/30 animate-slide-up"
-                                :class="selectedAgentId === agent.id ? 'bg-accent/50' : ''"
-                                :style="{ animationDelay: `${idx * 40}ms` }" @click="selectAgent(agent.id)">
-                                <div class="flex items-start justify-between gap-2">
-                                    <div class="min-w-0 flex-1">
-                                        <div class="flex items-center gap-1.5">
-                                            <span class="inline-block w-1.5 h-1.5 rounded-full shrink-0"
-                                                :class="getStatusDotClass(agent.status)" />
-                                            <TextOverflowTooltip :text="agent.name" as="div"
-                                                class="text-sm font-semibold leading-5" />
-                                        </div>
-                                        <TextOverflowTooltip :text="agent.description || '暂无描述'" as="p" :lines="1"
-                                            class="mt-0.5 text-xs text-muted-foreground leading-4 pl-3" />
-                                    </div>
-                                    <Badge variant="outline" :class="getRoleBadgeClass(agent.role)"
-                                        class="shrink-0 text-[10px] px-1.5">
-                                        {{ formatRole(agent.role) }}
-                                    </Badge>
-                                </div>
+                <!-- 错误 -->
+                <div v-else-if="listError" class="flex flex-col items-center py-20 text-muted-foreground">
+                    <AlertCircle class="h-6 w-6 mb-2" />
+                    <p class="text-sm">{{ listError }}</p>
+                    <Button class="mt-3" size="sm" @click="refreshList">重新加载</Button>
+                </div>
 
-                                <div class="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground pl-3">
-                                    <span class="tabular-nums font-medium"
-                                        :class="agent.total_score >= 0 ? 'text-emerald-600' : 'text-rose-500'">
-                                        {{ agent.total_score >= 0 ? '+' : '' }}{{ agent.total_score }} 分
-                                    </span>
-                                    <span v-if="agent.open_sub_task_count" class="tabular-nums">
-                                        {{ agent.open_sub_task_count }} 个待办
-                                    </span>
-                                    <span v-if="agent.in_progress_count" class="text-sky-600 tabular-nums">
-                                        {{ agent.in_progress_count }} 执行中
-                                    </span>
-                                    <span class="ml-auto tabular-nums">{{ formatRelativeTime(agent.last_request_at)
-                                    }}</span>
-                                </div>
-                            </button>
+                <!-- 空状态 -->
+                <div v-else-if="!pageData.items.length"
+                    class="flex flex-col items-center py-20 text-muted-foreground/50">
+                    <Users class="h-8 w-8 mb-3" />
+                    <p class="text-sm font-medium">没有找到匹配的 Agent</p>
+                </div>
+
+                <!-- 卡片网格 -->
+                <div v-else class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <div v-for="(agent, idx) in pageData.items" :key="agent.id"
+                        class="group relative rounded-xl border border-border/50 bg-card p-4 transition-all duration-200 hover:border-border hover:shadow-md cursor-pointer animate-slide-up"
+                        :style="{ animationDelay: `${idx * 40}ms` }" @click="openDetail(agent.id)">
+
+                        <!-- 顶部：状态点 + 名称 + 角色 -->
+                        <div class="flex items-start justify-between gap-2 mb-2">
+                            <div class="flex items-center gap-2 min-w-0">
+                                <span class="inline-block w-2 h-2 rounded-full shrink-0 ring-2 ring-background"
+                                    :class="getStatusDotClass(agent.status)" />
+                                <TextOverflowTooltip :text="agent.name" as="h3"
+                                    class="text-sm font-semibold leading-5 truncate" />
+                            </div>
+                            <Badge variant="outline" :class="getRoleBadgeClass(agent.role)"
+                                class="shrink-0 text-[10px] px-1.5 py-0">
+                                {{ formatRole(agent.role) }}
+                            </Badge>
                         </div>
 
-                        <!-- 分页 -->
-                        <div v-if="pageData.total_pages > 1"
-                            class="flex items-center justify-center gap-2 py-3 border-t border-border/30 text-xs text-muted-foreground">
-                            <Button variant="ghost" size="icon" class="h-7 w-7"
-                                :disabled="pageData.page <= 1 || loading" @click="goToPage(pageData.page - 1)">
-                                <ArrowLeft class="h-3 w-3" />
-                            </Button>
-                            <span class="tabular-nums">{{ pageData.page }} / {{ pageData.total_pages }}</span>
-                            <Button variant="ghost" size="icon" class="h-7 w-7"
-                                :disabled="pageData.page >= pageData.total_pages || loading"
-                                @click="goToPage(pageData.page + 1)">
-                                <ArrowRight class="h-3 w-3" />
-                            </Button>
-                        </div>
-                    </template>
+                        <!-- 描述 -->
+                        <p class="text-xs text-muted-foreground leading-4 line-clamp-2 min-h-[2rem] mb-3 pl-4">
+                            {{ agent.description || '暂无描述' }}
+                        </p>
 
-                    <!-- 空状态 -->
-                    <div v-else class="flex flex-col items-center justify-center py-16 text-muted-foreground/50">
-                        <Users class="h-6 w-6 mb-2" />
-                        <p class="text-sm">没有找到匹配的 Agent</p>
+                        <!-- 统计行 -->
+                        <div class="flex items-center gap-3 text-[11px] text-muted-foreground pl-4 mb-3">
+                            <span class="font-medium tabular-nums"
+                                :class="agent.total_score >= 0 ? 'text-emerald-600' : 'text-rose-500'">
+                                {{ agent.total_score >= 0 ? '+' : '' }}{{ agent.total_score }} 分
+                            </span>
+                            <span v-if="agent.open_sub_task_count" class="tabular-nums">
+                                {{ agent.open_sub_task_count }} 个待办
+                            </span>
+                            <span v-else class="opacity-50">无待办</span>
+                            <span class="ml-auto tabular-nums opacity-60">
+                                {{ formatRelativeTime(agent.last_request_at) }}
+                            </span>
+                        </div>
+
+                        <Separator class="mb-3 opacity-50" />
+
+                        <!-- 操作按钮行 -->
+                        <div class="flex items-center gap-1" @click.stop>
+                            <TooltipProvider>
+                                <Button variant="ghost" size="sm" class="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground"
+                                    @click="openEditDialogForAgent(agent)">
+                                    <Pencil class="h-3 w-3" />
+                                    编辑
+                                </Button>
+                                <Button variant="ghost" size="sm"
+                                    class="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground"
+                                    :disabled="togglingStatus" @click="confirmToggleStatus(agent)">
+                                    <ToggleRight v-if="agent.status === 'active'" class="h-3.5 w-3.5 text-emerald-500" />
+                                    <ToggleLeft v-else class="h-3.5 w-3.5 text-gray-400" />
+                                    {{ agent.status === 'active' ? '禁用' : '启用' }}
+                                </Button>
+                                <Button variant="ghost" size="sm"
+                                    class="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-rose-600 ml-auto"
+                                    @click="openDeleteDialogForAgent(agent)">
+                                    <Trash2 class="h-3 w-3" />
+                                    删除
+                                </Button>
+                            </TooltipProvider>
+                        </div>
                     </div>
                 </div>
 
-                <!-- ─── 右侧详情 ─── -->
-                <div class="hidden lg:flex flex-col flex-1 min-h-0 overflow-y-auto">
-                    <!-- 加载中 -->
-                    <div v-if="loadingDetail" class="flex items-center justify-center flex-1">
-                        <Loader2 class="h-6 w-6 animate-spin text-muted-foreground" />
-                    </div>
+                <!-- 分页 -->
+                <div v-if="pageData.total_pages > 1"
+                    class="flex items-center justify-center gap-3 pt-2 text-sm text-muted-foreground">
+                    <Button variant="outline" size="sm" class="h-8 gap-1" :disabled="pageData.page <= 1 || loading"
+                        @click="goToPage(pageData.page - 1)">
+                        <ArrowLeft class="h-3.5 w-3.5" />
+                        上一页
+                    </Button>
+                    <span class="tabular-nums text-xs">{{ pageData.page }} / {{ pageData.total_pages }}</span>
+                    <Button variant="outline" size="sm" class="h-8 gap-1"
+                        :disabled="pageData.page >= pageData.total_pages || loading"
+                        @click="goToPage(pageData.page + 1)">
+                        下一页
+                        <ArrowRight class="h-3.5 w-3.5" />
+                    </Button>
+                </div>
+            </div>
 
-                    <!-- 错误 -->
-                    <div v-else-if="detailError"
-                        class="flex flex-col items-center justify-center flex-1 text-muted-foreground/50">
-                        <AlertCircle class="h-5 w-5 mb-2" />
-                        <p class="text-sm">{{ detailError }}</p>
-                        <Button v-if="selectedAgentId" class="mt-3" size="sm"
-                            @click="loadAgentDetail(selectedAgentId)">重试</Button>
-                    </div>
+            <!-- ════════════════ 详情视图 ════════════════ -->
+            <div v-else-if="mode === 'detail'" key="detail" class="space-y-6 max-w-3xl mx-auto">
 
-                    <!-- Agent 详情 -->
-                    <div v-else-if="selectedAgent" :key="detailKey" class="p-6 space-y-6 animate-slide-up">
-                        <!-- 头部 -->
-                        <div>
-                            <div class="flex items-start justify-between gap-3">
-                                <div class="min-w-0 space-y-1">
-                                    <h2 class="text-lg font-semibold leading-7">{{ selectedAgent.name }}</h2>
-                                    <p class="text-sm text-muted-foreground leading-5">
-                                        {{ selectedAgent.description || '暂无描述信息。' }}
-                                    </p>
-                                </div>
-                                <div class="flex gap-1.5 shrink-0">
-                                    <Badge variant="outline" :class="getRoleBadgeClass(selectedAgent.role)">
-                                        {{ formatRole(selectedAgent.role) }}
-                                    </Badge>
-                                    <Badge variant="outline" class="gap-1">
-                                        <span class="inline-block w-1.5 h-1.5 rounded-full"
-                                            :class="getStatusDotClass(selectedAgent.status)" />
-                                        {{ formatStatus(selectedAgent.status) }}
-                                    </Badge>
-                                </div>
+                <!-- 返回 -->
+                <button
+                    class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    @click="goBackToList">
+                    <ChevronLeft class="h-4 w-4" />
+                    返回列表
+                </button>
+
+                <!-- 加载中 -->
+                <div v-if="loadingDetail" class="flex items-center justify-center py-20">
+                    <Loader2 class="h-7 w-7 animate-spin text-muted-foreground" />
+                </div>
+
+                <!-- 错误 -->
+                <div v-else-if="detailError" class="flex flex-col items-center py-20 text-muted-foreground/50">
+                    <AlertCircle class="h-6 w-6 mb-2" />
+                    <p class="text-sm">{{ detailError }}</p>
+                    <Button v-if="selectedAgentId" class="mt-3" size="sm"
+                        @click="loadAgentDetail(selectedAgentId)">重试</Button>
+                </div>
+
+                <!-- Agent 详情 -->
+                <div v-else-if="selectedAgent" :key="detailKey" class="space-y-6 animate-slide-up">
+                    <!-- 头部卡片 -->
+                    <div class="rounded-xl border bg-card p-6">
+                        <div class="flex items-start justify-between gap-4">
+                            <div class="min-w-0 space-y-1.5">
+                                <h2 class="text-xl font-bold leading-7">{{ selectedAgent.name }}</h2>
+                                <p class="text-sm text-muted-foreground leading-5">
+                                    {{ selectedAgent.description || '暂无描述信息。' }}
+                                </p>
                             </div>
+                            <div class="flex gap-1.5 shrink-0">
+                                <Badge variant="outline" :class="getRoleBadgeClass(selectedAgent.role)">
+                                    {{ formatRole(selectedAgent.role) }}
+                                </Badge>
+                                <Badge variant="outline" class="gap-1">
+                                    <span class="inline-block w-1.5 h-1.5 rounded-full"
+                                        :class="getStatusDotClass(selectedAgent.status)" />
+                                    {{ formatStatus(selectedAgent.status) }}
+                                </Badge>
+                            </div>
+                        </div>
+                    </div>
 
-                            <!-- 积分 + 排名 -->
-                            <div class="mt-4 rounded-xl border border-border/50 bg-muted/20 p-3.5 space-y-3">
-                                <div class="flex items-center justify-between">
-                                    <span class="text-xs text-muted-foreground">积分总分</span>
-                                    <span class="text-xl font-bold tabular-nums"
-                                        :class="selectedAgent.total_score >= 0 ? 'text-emerald-600' : 'text-rose-500'">
-                                        {{ selectedAgent.total_score >= 0 ? '+' : '' }}{{ selectedAgent.total_score }}
-                                    </span>
+                    <!-- 数据面板行 -->
+                    <div class="grid gap-4 sm:grid-cols-3">
+                        <!-- 积分 -->
+                        <div class="rounded-xl border bg-card p-4 text-center">
+                            <div class="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">积分总分
+                            </div>
+                            <div class="text-2xl font-bold tabular-nums"
+                                :class="selectedAgent.total_score >= 0 ? 'text-emerald-600' : 'text-rose-500'">
+                                {{ selectedAgent.total_score >= 0 ? '+' : '' }}{{ selectedAgent.total_score }}
+                            </div>
+                            <div class="text-xs text-muted-foreground mt-1 tabular-nums">
+                                排名 <span class="font-medium text-foreground">{{ selectedAgent.rank }}</span>
+                                / {{ selectedAgent.total_agents }}
+                            </div>
+                        </div>
+                        <!-- 奖惩 -->
+                        <div class="rounded-xl border bg-card p-4 text-center">
+                            <div class="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">奖惩记录
+                            </div>
+                            <div class="flex items-center justify-center gap-4 mt-1">
+                                <div>
+                                    <div class="text-xl font-bold tabular-nums text-emerald-600">
+                                        {{ selectedAgent.reward_count }}
+                                    </div>
+                                    <div class="text-[10px] text-muted-foreground">奖励</div>
                                 </div>
-                                <div class="flex gap-4 text-xs text-muted-foreground tabular-nums">
-                                    <span>排名 <span class="font-medium text-foreground">{{ selectedAgent.rank
-                                    }}</span> / {{ selectedAgent.total_agents }}</span>
-                                    <span>奖励 <span class="font-medium text-emerald-600">{{
-                                        selectedAgent.reward_count
-                                            }}</span></span>
-                                    <span>惩罚 <span class="font-medium text-rose-500">{{
-                                        selectedAgent.penalty_count
-                                            }}</span></span>
+                                <Separator orientation="vertical" class="h-8" />
+                                <div>
+                                    <div class="text-xl font-bold tabular-nums text-rose-500">
+                                        {{ selectedAgent.penalty_count }}
+                                    </div>
+                                    <div class="text-[10px] text-muted-foreground">惩罚</div>
                                 </div>
                             </div>
                         </div>
-
                         <!-- 工作负载 -->
-                        <div>
-                            <div class="text-xs font-medium text-muted-foreground/60 uppercase tracking-wider mb-2">
+                        <div class="rounded-xl border bg-card p-4 text-center">
+                            <div class="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">
                                 工作负载 · {{ workloadTotal }}
                             </div>
-                            <div class="grid grid-cols-3 gap-2">
-                                <div class="rounded-lg border border-border/50 bg-muted/20 p-3 text-center">
+                            <div class="flex items-center justify-center gap-3 mt-1">
+                                <div>
                                     <div class="text-lg font-bold tabular-nums text-indigo-600">
                                         {{ selectedAgent.assigned_count }}
                                     </div>
-                                    <div class="text-[11px] text-muted-foreground mt-0.5">已分配</div>
+                                    <div class="text-[10px] text-muted-foreground">待办</div>
                                 </div>
-                                <div class="rounded-lg border border-border/50 bg-muted/20 p-3 text-center">
+                                <div>
                                     <div class="text-lg font-bold tabular-nums text-sky-600">
                                         {{ selectedAgent.in_progress_count }}
                                     </div>
-                                    <div class="text-[11px] text-muted-foreground mt-0.5">执行中</div>
+                                    <div class="text-[10px] text-muted-foreground">执行中</div>
                                 </div>
-                                <div class="rounded-lg border border-border/50 bg-muted/20 p-3 text-center">
-                                    <div class="text-lg font-bold tabular-nums text-amber-600">
-                                        {{ selectedAgent.review_count }}
-                                    </div>
-                                    <div class="text-[11px] text-muted-foreground mt-0.5">待审查</div>
-                                </div>
-                                <div v-if="selectedAgent.rework_count"
-                                    class="rounded-lg border border-border/50 bg-muted/20 p-3 text-center">
-                                    <div class="text-lg font-bold tabular-nums text-orange-600">
-                                        {{ selectedAgent.rework_count }}
-                                    </div>
-                                    <div class="text-[11px] text-muted-foreground mt-0.5">返工中</div>
-                                </div>
-                                <div v-if="selectedAgent.blocked_count"
-                                    class="rounded-lg border border-border/50 bg-muted/20 p-3 text-center">
-                                    <div class="text-lg font-bold tabular-nums text-rose-600">
-                                        {{ selectedAgent.blocked_count }}
-                                    </div>
-                                    <div class="text-[11px] text-muted-foreground mt-0.5">阻塞</div>
-                                </div>
-                                <div class="rounded-lg border border-border/50 bg-muted/20 p-3 text-center">
+                                <div>
                                     <div class="text-lg font-bold tabular-nums text-emerald-600">
                                         {{ selectedAgent.done_count }}
                                     </div>
-                                    <div class="text-[11px] text-muted-foreground mt-0.5">已完成</div>
+                                    <div class="text-[10px] text-muted-foreground">已完成</div>
                                 </div>
-                            </div>
-                        </div>
-
-                        <Separator />
-
-                        <!-- 时间信息 -->
-                        <div class="space-y-2">
-                            <div class="text-xs font-medium text-muted-foreground/60 uppercase tracking-wider mb-2">
-                                时间信息
-                            </div>
-                            <div class="grid grid-cols-2 gap-3">
-                                <div class="rounded-lg border border-border/50 bg-muted/20 p-3">
-                                    <div class="text-[11px] text-muted-foreground/60">最近请求</div>
-                                    <div class="mt-1 text-sm font-medium">
-                                        {{ formatRelativeTime(selectedAgent.last_request_at) }}
-                                    </div>
-                                    <div class="text-[10px] text-muted-foreground mt-0.5">
-                                        {{ formatDate(selectedAgent.last_request_at) }}
-                                    </div>
-                                </div>
-                                <div class="rounded-lg border border-border/50 bg-muted/20 p-3">
-                                    <div class="text-[11px] text-muted-foreground/60">最近活动</div>
-                                    <div class="mt-1 text-sm font-medium">
-                                        {{ formatRelativeTime(selectedAgent.last_activity_at) }}
-                                    </div>
-                                    <div class="text-[10px] text-muted-foreground mt-0.5">
-                                        {{ formatDate(selectedAgent.last_activity_at) }}
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="flex gap-4 text-[11px] text-muted-foreground/60 pt-1">
-                                <span>创建于 {{ formatDate(selectedAgent.created_at) }}</span>
-                                <span>Agent ID: {{ selectedAgent.id }}</span>
-                            </div>
-                        </div>
-
-                        <Separator />
-
-                        <!-- 操作 -->
-                        <div>
-                            <div class="text-xs font-medium text-muted-foreground/60 uppercase tracking-wider mb-3">
-                                操作
-                            </div>
-                            <div class="flex flex-wrap gap-2">
-                                <Button variant="outline" size="sm" class="gap-1.5" @click="openEditDialog">
-                                    <Pencil class="h-3.5 w-3.5" />
-                                    编辑名称/描述
-                                </Button>
-                                <Button variant="outline" size="sm"
-                                    class="gap-1.5 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-                                    @click="showResetKeyConfirm = true">
-                                    <KeyRound class="h-3.5 w-3.5" />
-                                    重置 API Key
-                                </Button>
                             </div>
                         </div>
                     </div>
 
-                    <!-- 未选择 -->
-                    <div v-if="!loadingDetail && !detailError && !selectedAgent"
-                        class="flex flex-col items-center justify-center flex-1 text-muted-foreground/40">
-                        <Users class="h-8 w-8 mb-3" />
-                        <p class="text-sm font-medium text-muted-foreground/60">点击左侧 Agent 查看详情</p>
-                        <p class="text-xs mt-1">积分、工作负载和活跃信息会在这里展示</p>
+                    <!-- 时间信息 -->
+                    <div class="rounded-xl border bg-card p-5">
+                        <div class="text-xs font-medium text-muted-foreground/60 uppercase tracking-wider mb-3">
+                            时间信息
+                        </div>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                            <div>
+                                <div class="text-[11px] text-muted-foreground/60">最近请求</div>
+                                <div class="text-sm font-medium mt-0.5">
+                                    {{ formatRelativeTime(selectedAgent.last_request_at) }}
+                                </div>
+                                <div class="text-[10px] text-muted-foreground">
+                                    {{ formatDate(selectedAgent.last_request_at) }}
+                                </div>
+                            </div>
+                            <div>
+                                <div class="text-[11px] text-muted-foreground/60">最近活动</div>
+                                <div class="text-sm font-medium mt-0.5">
+                                    {{ formatRelativeTime(selectedAgent.last_activity_at) }}
+                                </div>
+                                <div class="text-[10px] text-muted-foreground">
+                                    {{ formatDate(selectedAgent.last_activity_at) }}
+                                </div>
+                            </div>
+                            <div>
+                                <div class="text-[11px] text-muted-foreground/60">创建时间</div>
+                                <div class="text-sm font-medium mt-0.5">
+                                    {{ formatDate(selectedAgent.created_at) }}
+                                </div>
+                            </div>
+                            <div>
+                                <div class="text-[11px] text-muted-foreground/60">Agent ID</div>
+                                <div class="text-xs font-mono text-muted-foreground mt-1 break-all select-all">
+                                    {{ selectedAgent.id }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 操作区 -->
+                    <div class="rounded-xl border bg-card p-5">
+                        <div class="text-xs font-medium text-muted-foreground/60 uppercase tracking-wider mb-3">
+                            操作
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <Button variant="outline" size="sm" class="gap-1.5" @click="openEditDialog">
+                                <Pencil class="h-3.5 w-3.5" />
+                                编辑信息
+                            </Button>
+                            <Button variant="outline" size="sm" class="gap-1.5" :disabled="togglingStatus"
+                                @click="confirmToggleStatus(selectedAgent)">
+                                <ToggleRight v-if="selectedAgent.status === 'active'"
+                                    class="h-4 w-4 text-emerald-500" />
+                                <ToggleLeft v-else class="h-4 w-4 text-gray-400" />
+                                {{ selectedAgent.status === 'active' ? '禁用' : '启用' }}
+                            </Button>
+                            <Button variant="outline" size="sm"
+                                class="gap-1.5 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                                @click="showResetKeyConfirm = true">
+                                <KeyRound class="h-3.5 w-3.5" />
+                                重置 API Key
+                            </Button>
+                            <Button variant="outline" size="sm"
+                                class="gap-1.5 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                                @click="openDeleteDialog">
+                                <Trash2 class="h-3.5 w-3.5" />
+                                删除 Agent
+                            </Button>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-    </TooltipProvider>
+        </Transition>
+    </div>
 
-    <!-- 编辑名称/描述弹窗 -->
+    <!-- ════════ 弹窗区域 ════════ -->
+
+    <!-- 编辑 Agent 信息弹窗 -->
     <Teleport to="body">
         <Transition name="fade">
             <div v-if="showEditDialog" class="fixed inset-0 z-50 flex items-center justify-center">
@@ -597,6 +758,21 @@ async function copyNewKey() {
                         <div>
                             <label class="text-xs text-muted-foreground mb-1 block">名称</label>
                             <Input v-model="editName" placeholder="Agent 名称" maxlength="100" />
+                        </div>
+                        <div>
+                            <label class="text-xs text-muted-foreground mb-1.5 block">角色</label>
+                            <div class="flex gap-1.5">
+                                <Button v-for="option in roleOptions.filter(o => o.value !== 'all')" :key="option.value"
+                                    size="sm" :variant="editRole === option.value ? 'default' : 'outline'"
+                                    class="flex-1 h-8 text-xs px-0" @click="editRole = option.value">
+                                    {{ option.label }}
+                                </Button>
+                            </div>
+                            <div v-if="roleChanged"
+                                class="mt-2 flex items-start gap-1.5 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-700 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-300">
+                                <AlertTriangle class="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                                <span>改角色后请在「提示词管理」中修改对应提示词，并手动同步到该 Agent，否则角色变更不会实际生效。</span>
+                            </div>
                         </div>
                         <div>
                             <label class="text-xs text-muted-foreground mb-1 block">描述</label>
@@ -632,9 +808,8 @@ async function copyNewKey() {
                         </div>
                         <h2 class="text-lg font-semibold">重置 API Key</h2>
                         <p class="text-sm text-muted-foreground">
-                            确认重置 <span class="font-medium text-foreground">{{ selectedAgent?.name }}</span> 的 API Key？旧
-                            Key
-                            将立即失效。
+                            确认重置 <span class="font-medium text-foreground">{{ selectedAgent?.name }}</span> 的 API
+                            Key？旧 Key 将立即失效。
                         </p>
                     </div>
                     <div class="mt-6 flex gap-3">
@@ -682,6 +857,102 @@ async function copyNewKey() {
             </div>
         </Transition>
     </Teleport>
+
+    <!-- 删除 Agent 确认弹窗 -->
+    <Teleport to="body">
+        <Transition name="fade">
+            <div v-if="showDeleteDialog" class="fixed inset-0 z-50 flex items-center justify-center">
+                <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="showDeleteDialog = false" />
+                <div
+                    class="relative z-10 w-full max-w-md rounded-xl border bg-background p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+                    <div class="space-y-2 text-center">
+                        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-rose-100">
+                            <Trash2 class="h-5 w-5 text-rose-600" />
+                        </div>
+                        <h2 class="text-lg font-semibold">删除 Agent</h2>
+                        <p class="text-sm text-muted-foreground">
+                            即将删除 <span class="font-medium text-foreground">{{ selectedAgent?.name }}</span>，此操作不可撤销。
+                        </p>
+                    </div>
+
+                    <!-- 关联数据风险提示 -->
+                    <div class="mt-4 rounded-lg border border-rose-200 bg-rose-50/50 p-3 space-y-1.5">
+                        <div class="flex items-center gap-1.5 text-xs font-medium text-rose-700">
+                            <AlertTriangle class="h-3.5 w-3.5" />
+                            <span>以下关联数据将被清空：</span>
+                        </div>
+                        <div v-if="loadingCounts" class="flex justify-center py-2">
+                            <Loader2 class="h-4 w-4 animate-spin text-muted-foreground" />
+                        </div>
+                        <div v-else-if="relatedCounts" class="grid grid-cols-2 gap-1 text-xs text-rose-600">
+                            <span>• 子任务解绑：{{ relatedCounts.sub_task_count }} 个</span>
+                            <span>• 审查记录：{{ relatedCounts.review_count }} 条</span>
+                            <span>• 积分记录：{{ relatedCounts.reward_count }} 条</span>
+                            <span>• 活动日志：{{ relatedCounts.activity_count }} 条</span>
+                            <span>• 巡查记录：{{ relatedCounts.patrol_count }} 条</span>
+                            <span>• 请求日志：{{ relatedCounts.request_count }} 条</span>
+                        </div>
+                    </div>
+
+                    <!-- 确认输入 -->
+                    <div class="mt-4">
+                        <label class="text-xs text-muted-foreground mb-1.5 block">
+                            请输入 <span class="font-semibold text-foreground">确认删除{{ selectedAgent?.name }}</span> 以确认
+                        </label>
+                        <Input v-model="deleteConfirmInput" placeholder="确认删除..."
+                            class="border-rose-200 focus:ring-rose-500" />
+                        <p v-if="deleteError" class="text-xs text-rose-500 mt-1">{{ deleteError }}</p>
+                    </div>
+
+                    <div class="mt-5 flex gap-3">
+                        <Button variant="outline" class="flex-1" :disabled="deletingAgent"
+                            @click="showDeleteDialog = false">取消</Button>
+                        <Button variant="destructive" class="flex-1" :disabled="!deleteConfirmValid || deletingAgent"
+                            @click="handleDeleteAgent">
+                            <Loader2 v-if="deletingAgent" class="h-4 w-4 animate-spin mr-1" />
+                            确认删除
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        </Transition>
+    </Teleport>
+    <!-- 启用/禁用确认弹窗 -->
+    <Teleport to="body">
+        <Transition name="fade">
+            <div v-if="showToggleConfirm" class="fixed inset-0 z-50 flex items-center justify-center">
+                <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="showToggleConfirm = false" />
+                <div
+                    class="relative z-10 w-full max-w-sm rounded-xl border bg-background p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+                    <div class="space-y-2 text-center">
+                        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full"
+                            :class="toggleTarget?.status === 'active' ? 'bg-amber-100' : 'bg-emerald-100'">
+                            <ToggleLeft v-if="toggleTarget?.status === 'active'" class="h-5 w-5 text-amber-600" />
+                            <ToggleRight v-else class="h-5 w-5 text-emerald-600" />
+                        </div>
+                        <h2 class="text-lg font-semibold">
+                            {{ toggleTarget?.status === 'active' ? '禁用' : '启用' }} Agent
+                        </h2>
+                        <p class="text-sm text-muted-foreground">
+                            确认{{ toggleTarget?.status === 'active' ? '禁用' : '启用' }}
+                            <span class="font-medium text-foreground">{{ toggleTarget?.name }}</span>
+                            ？{{ toggleTarget?.status === 'active' ? '禁用后该 Agent 将无法访问任何 API。' : '启用后该 Agent 将恢复 API 访问权限。' }}
+                        </p>
+                    </div>
+                    <div class="mt-6 flex gap-3">
+                        <Button variant="outline" class="flex-1"
+                            @click="showToggleConfirm = false">取消</Button>
+                        <Button class="flex-1"
+                            :variant="toggleTarget?.status === 'active' ? 'destructive' : 'default'"
+                            :disabled="togglingStatus" @click="handleToggleStatus">
+                            <Loader2 v-if="togglingStatus" class="h-4 w-4 animate-spin mr-1" />
+                            确认{{ toggleTarget?.status === 'active' ? '禁用' : '启用' }}
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        </Transition>
+    </Teleport>
 </template>
 
 <style scoped>
@@ -699,5 +970,48 @@ async function copyNewKey() {
 
 .animate-slide-up {
     animation: slide-up-fade-in 0.35s ease-out both;
+}
+
+/* toast 动画 */
+.toast-enter-active,
+.toast-leave-active {
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.toast-enter-from {
+    opacity: 0;
+    transform: translate(-50%, -12px);
+}
+
+.toast-leave-to {
+    opacity: 0;
+    transform: translate(-50%, -8px);
+}
+
+/* 视图切换过渡 */
+.view-enter-active,
+.view-leave-active {
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.view-enter-from {
+    opacity: 0;
+    transform: translateX(12px);
+}
+
+.view-leave-to {
+    opacity: 0;
+    transform: translateX(-12px);
+}
+
+/* 弹窗过渡 */
+.fade-enter-active,
+.fade-leave-active {
+    transition: opacity 0.2s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+    opacity: 0;
 }
 </style>

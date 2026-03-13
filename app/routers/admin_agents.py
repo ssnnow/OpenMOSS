@@ -12,8 +12,11 @@ from app.schemas.admin_agent import (
     AdminAgentCreateRequest,
     AdminAgentCreateResponse,
     AdminAgentActivityLogPageResponse,
+    AdminAgentDeleteRequest,
+    AdminAgentDeleteResponse,
     AdminAgentDetail,
     AdminAgentPageResponse,
+    AdminAgentRelatedCountsResponse,
     AdminAgentRequestLogPageResponse,
     AdminAgentResetKeyResponse,
     AdminAgentScoreLogPageResponse,
@@ -187,7 +190,7 @@ async def list_admin_agent_request_logs(
 @router.put(
     "/agents/{agent_id}",
     response_model=AdminAgentWriteResponse,
-    summary="管理端更新 Agent 名称/描述",
+    summary="管理端更新 Agent 信息",
 )
 async def update_admin_agent_profile(
     agent_id: str,
@@ -195,12 +198,13 @@ async def update_admin_agent_profile(
     _: bool = Depends(verify_admin),
     db: Session = Depends(get_db),
 ):
-    """管理员更新 Agent 的名称或描述"""
+    """管理员更新 Agent 的名称、角色或描述"""
     try:
         agent = agent_service.update_agent_profile(
             db,
             agent_id,
             name=req.name,
+            role=req.role,
             description=req.description,
         )
     except Exception as exc:
@@ -276,3 +280,48 @@ async def get_admin_agent_detail(
         return admin_agent_query_service.get_agent_detail(db, agent_id)
     except Exception as exc:
         _raise_admin_agent_query_error(exc)
+
+
+@router.get(
+    "/agents/{agent_id}/related-counts",
+    response_model=AdminAgentRelatedCountsResponse,
+    summary="查询 Agent 关联数据数量",
+)
+async def get_admin_agent_related_counts(
+    agent_id: str,
+    _: bool = Depends(verify_admin),
+    db: Session = Depends(get_db),
+):
+    """删除前查询关联数据数量，用于风险提示"""
+    try:
+        return agent_service.get_agent_related_counts(db, agent_id)
+    except Exception as exc:
+        _raise_admin_agent_write_error(exc)
+
+
+@router.delete(
+    "/agents/{agent_id}",
+    response_model=AdminAgentDeleteResponse,
+    summary="管理端删除 Agent",
+)
+async def delete_admin_agent(
+    agent_id: str,
+    req: AdminAgentDeleteRequest,
+    _: bool = Depends(verify_admin),
+    db: Session = Depends(get_db),
+):
+    """删除 Agent 并级联清理所有关联数据，需输入 Agent 名称确认"""
+    try:
+        counts = agent_service.delete_agent(db, agent_id, req.confirm_name)
+    except Exception as exc:
+        _raise_admin_agent_write_error(exc)
+    else:
+        return AdminAgentDeleteResponse(
+            agent_name=counts["agent_name"],
+            sub_task_count=counts["sub_task_count"],
+            review_count=counts["review_count"],
+            reward_count=counts["reward_count"],
+            activity_count=counts["activity_count"],
+            patrol_count=counts["patrol_count"],
+            request_count=counts["request_count"],
+        )

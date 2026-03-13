@@ -109,7 +109,7 @@ function triggerAnimations() {
         ['active_sub_task_count', c.active_sub_task_count],
         ['review_queue_count', c.review_queue_count],
         ['blocked_sub_task_count', c.blocked_sub_task_count],
-        ['available_agent_count', c.available_agent_count],
+        ['active_agent_count', c.active_agent_count],
         ['today_completed_sub_task_count', c.today_completed_sub_task_count],
     ]
     entries.forEach(([key, val], i) => {
@@ -141,7 +141,7 @@ const coreCards = computed(() => {
         { title: '活跃子任务', value: c.active_sub_task_count, animKey: 'active_sub_task_count', icon: Activity, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
         { title: '等待审查', value: c.review_queue_count, animKey: 'review_queue_count', icon: ClipboardCheck, color: 'text-amber-500', bg: 'bg-amber-500/10' },
         { title: '阻塞子任务', value: c.blocked_sub_task_count, animKey: 'blocked_sub_task_count', icon: AlertTriangle, color: 'text-rose-500', bg: 'bg-rose-500/10' },
-        { title: '可用 Agent', value: c.available_agent_count, animKey: 'available_agent_count', icon: Users, color: 'text-violet-500', bg: 'bg-violet-500/10' },
+        { title: '活跃 Agent', value: c.active_agent_count, animKey: 'active_agent_count', icon: Users, color: 'text-violet-500', bg: 'bg-violet-500/10' },
         { title: '今日完成', value: c.today_completed_sub_task_count, animKey: 'today_completed_sub_task_count', icon: CheckCircle2, color: 'text-teal-500', bg: 'bg-teal-500/10' },
     ]
 })
@@ -152,8 +152,8 @@ const statusLabels: Record<string, string> = {
     planning: '规划中', active: '活跃', in_progress: '进行中', completed: '已完成', archived: '归档', cancelled: '已取消',
     // sub_task
     pending: '待分配', assigned: '已分配', review: '审查中', rework: '返工中', blocked: '阻塞', done: '已完成',
-    // agent status
-    available: '可用', busy: '忙碌', offline: '离线',
+    // agent status (active 与 task.active 共用)
+    disabled: '已禁用',
     // agent role
     planner: '规划者', executor: '执行者', reviewer: '审查者', patrol: '巡查者',
     // review result
@@ -165,7 +165,7 @@ const statusColors: Record<string, string> = {
     completed: 'bg-emerald-500', archived: 'bg-gray-400', cancelled: 'bg-red-400',
     pending: 'bg-slate-400', assigned: 'bg-sky-400', review: 'bg-amber-500',
     rework: 'bg-orange-500', blocked: 'bg-rose-500', done: 'bg-emerald-500',
-    available: 'bg-emerald-500', busy: 'bg-amber-500', offline: 'bg-gray-400',
+    disabled: 'bg-gray-400',
     planner: 'bg-violet-500', executor: 'bg-sky-500', reviewer: 'bg-amber-500', patrol: 'bg-teal-500',
     approved: 'bg-emerald-500', rejected: 'bg-rose-500',
 }
@@ -312,8 +312,8 @@ const trendCards = computed<TrendCard[]>(() => {
             <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                 <div class="rounded-lg border border-border/40 bg-card p-3 text-center animate-slide-up"
                     style="animation-delay: 300ms">
-                    <div class="text-lg font-bold tabular-nums">{{ data.secondary_cards.offline_agent_count }}</div>
-                    <div class="text-[11px] text-muted-foreground">离线 Agent</div>
+                    <div class="text-lg font-bold tabular-nums">{{ data.secondary_cards.disabled_agent_count }}</div>
+                    <div class="text-[11px] text-muted-foreground">已禁用 Agent</div>
                 </div>
                 <div class="rounded-lg border border-border/40 bg-card p-3 text-center animate-slide-up"
                     style="animation-delay: 350ms">

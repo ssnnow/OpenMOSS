@@ -3,9 +3,16 @@ Agent 业务逻辑
 """
 import uuid
 import secrets
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.agent import Agent
+from app.models.activity_log import ActivityLog
+from app.models.patrol_record import PatrolRecord
+from app.models.request_log import RequestLog
+from app.models.review_record import ReviewRecord
+from app.models.reward_log import RewardLog
+from app.models.sub_task import SubTask
 
 
 def generate_api_key() -> str:
@@ -71,9 +78,10 @@ def update_agent_profile(
     db: Session,
     agent_id: str,
     name: str | None = None,
+    role: str | None = None,
     description: str | None = None,
 ) -> Agent:
-    """更新 Agent 名称/描述"""
+    """更新 Agent 名称/角色/描述"""
     agent = db.query(Agent).filter(Agent.id == agent_id).first()
     if not agent:
         raise ValueError(f"Agent {agent_id} 不存在")
@@ -85,6 +93,12 @@ def update_agent_profile(
             raise ValueError(f"名称 '{name}' 已被注册")
         agent.name = name
 
+    if role:
+        valid_roles = {"planner", "executor", "reviewer", "patrol"}
+        if role not in valid_roles:
+            raise ValueError(f"无效角色 '{role}'，可选: {', '.join(valid_roles)}")
+        agent.role = role
+
     if description is not None:
         agent.description = description
 
@@ -95,7 +109,7 @@ def update_agent_profile(
 
 def update_agent_status(db: Session, agent_id: str, status: str) -> Agent:
     """更新 Agent 状态"""
-    valid_statuses = {"available", "busy", "offline"}
+    valid_statuses = {"active", "disabled"}
     if status not in valid_statuses:
         raise ValueError(f"无效状态 '{status}'，可选: {', '.join(valid_statuses)}")
 
@@ -107,3 +121,51 @@ def update_agent_status(db: Session, agent_id: str, status: str) -> Agent:
     db.commit()
     db.refresh(agent)
     return agent
+
+
+def get_agent_related_counts(db: Session, agent_id: str) -> dict:
+    """查询 Agent 关联数据的数量，用于删除前的风险展示"""
+    agent = db.query(Agent).filter(Agent.id == agent_id).first()
+    if not agent:
+        raise ValueError(f"Agent {agent_id} 不存在")
+
+    return {
+        "agent_id": agent.id,
+        "agent_name": agent.name,
+        "sub_task_count": db.query(func.count(SubTask.id)).filter(SubTask.assigned_agent == agent_id).scalar() or 0,
+        "review_count": db.query(func.count(ReviewRecord.id)).filter(ReviewRecord.reviewer_agent == agent_id).scalar() or 0,
+        "reward_count": db.query(func.count(RewardLog.id)).filter(RewardLog.agent_id == agent_id).scalar() or 0,
+        "activity_count": db.query(func.count(ActivityLog.id)).filter(ActivityLog.agent_id == agent_id).scalar() or 0,
+        "patrol_count": db.query(func.count(PatrolRecord.id)).filter(PatrolRecord.agent_id == agent_id).scalar() or 0,
+        "request_count": db.query(func.count(RequestLog.id)).filter(RequestLog.agent_id == agent_id).scalar() or 0,
+    }
+
+
+def delete_agent(db: Session, agent_id: str, confirm_name: str) -> dict:
+    """安全删除 Agent，级联清理所有关联数据"""
+    agent = db.query(Agent).filter(Agent.id == agent_id).first()
+    if not agent:
+        raise ValueError(f"Agent {agent_id} 不存在")
+
+    if confirm_name != agent.name:
+        raise ValueError(f"确认名称不匹配，请输入「{agent.name}」以确认删除")
+
+    # 统计并级联删除
+    counts = get_agent_related_counts(db, agent_id)
+
+    # 解除子任务关联（不删除子任务本身，只清空 assigned_agent）
+    db.query(SubTask).filter(SubTask.assigned_agent == agent_id).update(
+        {SubTask.assigned_agent: None}, synchronize_session=False
+    )
+    # 删除关联记录
+    db.query(ReviewRecord).filter(ReviewRecord.reviewer_agent == agent_id).delete(synchronize_session=False)
+    db.query(RewardLog).filter(RewardLog.agent_id == agent_id).delete(synchronize_session=False)
+    db.query(ActivityLog).filter(ActivityLog.agent_id == agent_id).delete(synchronize_session=False)
+    db.query(PatrolRecord).filter(PatrolRecord.agent_id == agent_id).delete(synchronize_session=False)
+    db.query(RequestLog).filter(RequestLog.agent_id == agent_id).delete(synchronize_session=False)
+
+    # 删除 Agent 本身
+    db.delete(agent)
+    db.commit()
+
+    return counts

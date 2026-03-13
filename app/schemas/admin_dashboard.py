@@ -12,12 +12,12 @@ class AdminDashboardCoreCards(BaseModel):
     active_sub_task_count: int = 0
     review_queue_count: int = 0
     blocked_sub_task_count: int = 0
-    available_agent_count: int = 0
+    active_agent_count: int = 0
     today_completed_sub_task_count: int = 0
 
 
 class AdminDashboardSecondaryCards(BaseModel):
-    offline_agent_count: int = 0
+    disabled_agent_count: int = 0
     today_review_count: int = 0
     today_rejected_review_count: int = 0
     today_reject_rate: float = 0.0
@@ -45,9 +45,8 @@ class AdminDashboardSubTaskStatusDistribution(BaseModel):
 
 
 class AdminDashboardAgentStatusDistribution(BaseModel):
-    available: int = 0
-    busy: int = 0
-    offline: int = 0
+    active: int = 0
+    disabled: int = 0
 
 
 class AdminDashboardAgentRoleDistribution(BaseModel):
