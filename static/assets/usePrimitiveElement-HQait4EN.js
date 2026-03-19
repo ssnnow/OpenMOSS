@@ -1,0 +1,1 @@
+import{c as n}from"./index-ClMYq16s.js";import{k as m,r}from"./index-DbETOert.js";function o(){const e=r(),t=m(()=>["#text","#comment"].includes(e.value?.$el.nodeName)?e.value?.$el.nextElementSibling:n(e));return{primitiveElement:e,currentElement:t}}export{o as u};
