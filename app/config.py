@@ -235,6 +235,16 @@ class AppConfig:
         return self._data.get("cli", {}).get("version", 1)
 
     @property
+    def openclaw_gateway_url(self) -> str:
+        """OpenClaw 网关地址"""
+        return self._data.get("openclaw", {}).get("gateway_url", "http://127.0.0.1:18789")
+
+    @property
+    def openclaw_gateway_token(self) -> str:
+        """OpenClaw 网关 Token"""
+        return self._data.get("openclaw", {}).get("gateway_token", "")
+
+    @property
     def raw(self) -> dict:
         """获取原始配置数据"""
         return self._data

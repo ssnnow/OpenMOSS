@@ -20,6 +20,7 @@ from app.routers import (
     admin_reviews,
     admin_scores,
     admin_tasks,
+    agent_provision,
     agents,
     feed,
     logs,
@@ -142,6 +143,7 @@ app.include_router(admin_logs.router, prefix=API_PREFIX)
 app.include_router(admin_reviews.router, prefix=API_PREFIX)
 app.include_router(admin_scores.router, prefix=API_PREFIX)
 app.include_router(admin_tasks.router, prefix=API_PREFIX)
+app.include_router(agent_provision.router, prefix=API_PREFIX)
 app.include_router(tasks.router, prefix=API_PREFIX)
 app.include_router(sub_tasks.router, prefix=API_PREFIX)
 app.include_router(rules.router, prefix=API_PREFIX)

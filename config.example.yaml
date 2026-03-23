@@ -52,6 +52,11 @@ webui:
   public_feed: false # 活动流展示页公开开关（true=任何人可访问）
   feed_retention_days: 7 # 请求日志保留天数（超期自动清理）
 
+# OpenClaw 网关配置（用于一键创建 Agent）
+openclaw:
+  gateway_url: "http://127.0.0.1:18789"
+  gateway_token: ""
+
 # 初始化标记（由 Setup Wizard 自动设置，请勿手动修改）
 setup:
   initialized: false

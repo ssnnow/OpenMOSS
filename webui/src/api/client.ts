@@ -196,10 +196,39 @@ export interface AdminAgentListParams {
 // API 模块
 // ============================================================
 
+// ── Provisioned Agent Types ──
+
+export interface CreateAgentRequest {
+  name: string
+  role: string
+  wake_interval: string  // "15m" | "30m" | "1h" | "4h" | "24h"
+}
+
+export interface CreateAgentResponse {
+  id: number
+  name: string
+  role: string
+  wake_interval: string
+  status: string
+  openclaw_agent_id: string
+  openclaw_cron_job_id: string
+  created_at: string
+}
+
+export async function provisionAgent(data: CreateAgentRequest): Promise<CreateAgentResponse> {
+  const response = await adminApi.post('/admin/agents/provision', data)
+  return response.data
+}
+
+export async function deleteProvisionedAgent(agentId: number): Promise<void> {
+  await adminApi.delete(`/admin/agents/provision/${agentId}`)
+}
+
 export const adminApi = {
   login: (password: string) => api.post('/admin/login', { password }),
   resetKey: (agentId: string) => api.post(`/admin/agents/${agentId}/reset-key`),
   post: (url: string, data?: any) => api.post(url, data),
+  delete: (url: string) => api.delete(url),
 }
 
 export const adminAgentApi = {

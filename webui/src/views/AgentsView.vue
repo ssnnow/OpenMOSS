@@ -4,6 +4,7 @@ import { useDebounceFn } from '@vueuse/core'
 import {
     adminAgentApi,
     adminApi,
+    provisionAgent,
     type AdminAgentItem,
     type AdminAgentDetail,
     type AdminPageResponse,
@@ -32,6 +33,7 @@ import {
     ChevronLeft,
     ToggleLeft,
     ToggleRight,
+    Plus,
 } from 'lucide-vue-next'
 
 // ─── 状态 ───
@@ -343,6 +345,56 @@ async function copyNewKey() {
     }
 }
 
+// ─── 新建 Agent ───
+
+const showCreateDialog = ref(false)
+const createName = ref('')
+const createRole = ref('executor')
+const createWakeInterval = ref('1h')
+const createError = ref('')
+const creatingAgent = ref(false)
+
+const wakeIntervalOptions = [
+    { value: '15m', label: '15 分钟' },
+    { value: '30m', label: '30 分钟' },
+    { value: '1h', label: '1 小时' },
+    { value: '4h', label: '4 小时' },
+    { value: '24h', label: '24 小时' },
+]
+
+function openCreateDialog() {
+    createName.value = ''
+    createRole.value = 'executor'
+    createWakeInterval.value = '1h'
+    createError.value = ''
+    showCreateDialog.value = true
+}
+
+async function handleCreateAgent() {
+    const name = createName.value.trim()
+    const role = createRole.value.trim()
+    if (!name) { createError.value = '名称不能为空'; return }
+    if (!role) { createError.value = '角色/目标不能为空'; return }
+
+    creatingAgent.value = true
+    createError.value = ''
+    try {
+        await provisionAgent({
+            name,
+            role,
+            wake_interval: createWakeInterval.value,
+        })
+        showCreateDialog.value = false
+        toast('Agent 创建成功')
+        void loadAgents()
+    } catch (err: unknown) {
+        const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+        createError.value = msg ?? '创建失败，请重试'
+    } finally {
+        creatingAgent.value = false
+    }
+}
+
 // 删除 Agent
 const showDeleteDialog = ref(false)
 const deleteConfirmInput = ref('')
@@ -428,6 +480,10 @@ async function handleDeleteAgent() {
                         </div>
                         <Button variant="ghost" size="icon" class="h-9 w-9" :disabled="loading" @click="refreshList">
                             <RefreshCw class="h-4 w-4" :class="loading ? 'animate-spin' : ''" />
+                        </Button>
+                        <Button size="sm" class="h-9 gap-1.5" @click="openCreateDialog">
+                            <Plus class="h-4 w-4" />
+                            新建 Agent
                         </Button>
                     </div>
                 </div>
@@ -941,6 +997,64 @@ async function handleDeleteAgent() {
                             :disabled="togglingStatus" @click="handleToggleStatus">
                             <Loader2 v-if="togglingStatus" class="h-4 w-4 animate-spin mr-1" />
                             确认{{ toggleTarget?.status === 'active' ? '禁用' : '启用' }}
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        </Transition>
+    </Teleport>
+
+    <!-- 新建 Agent 弹窗 -->
+    <Teleport to="body">
+        <Transition name="fade">
+            <div v-if="showCreateDialog" class="fixed inset-0 z-50 flex items-center justify-center">
+                <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="!creatingAgent && (showCreateDialog = false)" />
+                <div
+                    class="relative z-10 w-full max-w-md rounded-xl border bg-background p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+                    <h2 class="text-lg font-semibold mb-4">新建 Agent</h2>
+                    <div class="space-y-4">
+                        <!-- 名称 -->
+                        <div>
+                            <label class="text-xs font-medium text-muted-foreground mb-1 block">名称 <span class="text-rose-500">*</span></label>
+                            <Input v-model="createName" placeholder="Agent 名称" maxlength="100" :disabled="creatingAgent" />
+                        </div>
+                        <!-- 角色 / 目标 -->
+                        <div>
+                            <label class="text-xs font-medium text-muted-foreground mb-1 block">角色 / 目标 <span class="text-rose-500">*</span></label>
+                            <textarea
+                                v-model="createRole"
+                                placeholder="e.g. Monitor competitor pricing weekly and write a brief report"
+                                :disabled="creatingAgent"
+                                rows="3"
+                                class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+                            />
+                        </div>
+                        <!-- 唤醒间隔 -->
+                        <div>
+                            <label class="text-xs font-medium text-muted-foreground mb-1 block">唤醒间隔</label>
+                            <select
+                                v-model="createWakeInterval"
+                                :disabled="creatingAgent"
+                                class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <option v-for="opt in wakeIntervalOptions" :key="opt.value" :value="opt.value">
+                                    {{ opt.label }}
+                                </option>
+                            </select>
+                        </div>
+                        <!-- 错误信息 -->
+                        <p v-if="createError" class="text-xs text-rose-500 flex items-center gap-1">
+                            <AlertCircle class="h-3.5 w-3.5 shrink-0" />
+                            {{ createError }}
+                        </p>
+                    </div>
+                    <div class="mt-5 flex gap-3">
+                        <Button variant="outline" class="flex-1" :disabled="creatingAgent"
+                            @click="showCreateDialog = false">取消</Button>
+                        <Button class="flex-1 gap-1.5" :disabled="creatingAgent" @click="handleCreateAgent">
+                            <Loader2 v-if="creatingAgent" class="h-4 w-4 animate-spin" />
+                            <Plus v-else class="h-4 w-4" />
+                            创建 Agent
                         </Button>
                     </div>
                 </div>

@@ -19,3 +19,8 @@ class Agent(Base):
     api_key = Column(String(64), unique=True, nullable=False, comment="API Key")
     total_score = Column(Integer, default=0, comment="累计积分")
     created_at = Column(DateTime, default=datetime.now, comment="注册时间")
+
+    # OpenClaw 一键创建字段
+    openclaw_agent_id = Column(String(128), nullable=True, comment="OpenClaw Agent ID")
+    openclaw_cron_job_id = Column(String(128), nullable=True, comment="OpenClaw Cron Job ID")
+    wake_interval = Column(String(20), nullable=True, comment="唤醒间隔，如 1h/4h/24h")

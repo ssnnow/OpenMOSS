@@ -53,11 +53,44 @@ def init_db():
     Base.metadata.create_all(bind=engine)
     print(f"[Database] 数据库初始化完成，共 {len(Base.metadata.tables)} 张表")
 
+    # SQLite 列迁移：新增 openclaw_* 和 wake_interval 列（幂等）
+    _migrate_agent_openclaw_columns()
+
     # 静默迁移旧状态值（available/busy → active，offline → disabled）
     _migrate_agent_statuses()
 
     # 首次启动时，自动导入全局规则模板
     _load_default_rules()
+
+
+def _migrate_agent_openclaw_columns():
+    """幂等迁移：为 agent 表添加 openclaw_agent_id / openclaw_cron_job_id / wake_interval 列"""
+    from sqlalchemy import text, inspect
+
+    inspector = inspect(engine)
+    existing_cols = {col["name"] for col in inspector.get_columns("agent")}
+
+    new_cols = [
+        ("openclaw_agent_id", "VARCHAR(128)"),
+        ("openclaw_cron_job_id", "VARCHAR(128)"),
+        ("wake_interval", "VARCHAR(20)"),
+    ]
+
+    db = SessionLocal()
+    try:
+        added = []
+        for col_name, col_type in new_cols:
+            if col_name not in existing_cols:
+                db.execute(text(f"ALTER TABLE agent ADD COLUMN {col_name} {col_type}"))
+                added.append(col_name)
+        if added:
+            db.commit()
+            print(f"[Database] Agent 表已添加列: {', '.join(added)}")
+    except Exception as e:
+        db.rollback()
+        print(f"[Database] Agent 列迁移失败（可能已存在）: {e}")
+    finally:
+        db.close()
 
 
 def _migrate_agent_statuses():
