@@ -163,23 +163,6 @@ export interface AdminAgentDetail extends AdminAgentItem {
   cancelled_count: number
 }
 
-// ── Onboarding API Types ──
-
-export interface CreateOpenClawAgentRequest {
-  role: string
-  name: string
-  cron_schedule?: string
-}
-
-export interface CreateOpenClawAgentResponse {
-  role: string
-  name: string
-  skill_zip_name: string
-  registration_token: string
-  api_url_hint: string
-  openclaw_setup_steps: string[]
-}
-
 export interface AdminAgentListParams {
   page?: number
   page_size?: number
@@ -199,7 +182,6 @@ export interface AdminAgentListParams {
 export const adminApi = {
   login: (password: string) => api.post('/admin/login', { password }),
   resetKey: (agentId: string) => api.post(`/admin/agents/${agentId}/reset-key`),
-  post: (url: string, data?: any) => api.post(url, data),
 }
 
 export const adminAgentApi = {
