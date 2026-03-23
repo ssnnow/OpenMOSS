@@ -23,6 +23,7 @@ from app.routers import (
     agents,
     feed,
     logs,
+    onboard,
     prompts,
     review_records,
     rules,
@@ -151,6 +152,7 @@ app.include_router(feed.router, prefix=API_PREFIX)
 app.include_router(prompts.router, prefix=API_PREFIX)
 app.include_router(tools.router, prefix=API_PREFIX)
 app.include_router(setup.router, prefix=API_PREFIX)
+app.include_router(onboard.router, prefix=API_PREFIX)
 
 
 # ============================================================

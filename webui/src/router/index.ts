@@ -52,6 +52,11 @@ const router = createRouter({
           component: () => import('@/views/AgentsView.vue'),
         },
         {
+          path: 'onboard',
+          name: 'onboard',
+          component: () => import('@/views/OnboardView.vue'),
+        },
+        {
           path: 'scores',
           name: 'scores',
           component: () => import('@/views/ScoresView.vue'),

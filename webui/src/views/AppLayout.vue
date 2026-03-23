@@ -30,6 +30,7 @@ import {
   BookText,
   Settings,
   LogOut,
+  Plus,
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -54,6 +55,7 @@ const menuItems = [
   { title: '仪表盘', icon: LayoutDashboard, path: '/dashboard' },
   { title: '任务管理', icon: ListTodo, path: '/tasks' },
   { title: 'Agent', icon: Users, path: '/agents' },
+  { title: '添加 Agent', icon: Plus, path: '/onboard' },
   { title: '积分排行', icon: Trophy, path: '/scores' },
   { title: '活动日志', icon: ScrollText, path: '/logs' },
   { title: '审查记录', icon: FileSearch, path: '/reviews' },
