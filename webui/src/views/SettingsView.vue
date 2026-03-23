@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { adminConfigApi } from '@/api/client'
+import { adminConfigApi, getOpenClawSettings, saveOpenClawSettings } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -32,6 +32,11 @@ const oldPassword = ref('')
 const newPassword = ref('')
 const confirmPassword = ref('')
 
+// OpenClaw 集成
+const openclawGatewayUrl = ref('')
+const openclawGatewayToken = ref('')
+const showGatewayToken = ref(false)
+
 const allEvents = [
     { value: 'task_completed', label: '子任务完成' },
     { value: 'review_rejected', label: '审查驳回' },
@@ -57,6 +62,15 @@ onMounted(async () => {
     } catch (e) {
         console.error('加载配置失败', e)
         showMessage('加载配置失败', 'error')
+    }
+
+    // 加载 OpenClaw 集成配置
+    try {
+        const ocCfg = await getOpenClawSettings()
+        openclawGatewayUrl.value = ocCfg.gateway_url || ''
+        openclawGatewayToken.value = ocCfg.gateway_token || ''
+    } catch (e) {
+        console.error('加载 OpenClaw 配置失败', e)
     } finally {
         loading.value = false
     }
@@ -116,6 +130,22 @@ async function saveSection(section: string) {
         }
 
         await adminConfigApi.update(data)
+        showMessage('保存成功', 'success')
+    } catch (e: unknown) {
+        const err = e as { response?: { data?: { detail?: string } } }
+        showMessage(err.response?.data?.detail || '保存失败', 'error')
+    } finally {
+        saving.value = null
+    }
+}
+
+async function saveOpenClaw() {
+    saving.value = 'openclaw'
+    try {
+        await saveOpenClawSettings({
+            gateway_url: openclawGatewayUrl.value,
+            gateway_token: openclawGatewayToken.value,
+        })
         showMessage('保存成功', 'success')
     } catch (e: unknown) {
         const err = e as { response?: { data?: { detail?: string } } }
@@ -186,11 +216,12 @@ async function copyText(text: string) {
 
         <template v-else>
             <Tabs default-value="project" class="w-full">
-                <TabsList class="grid w-full grid-cols-4">
+                <TabsList class="grid w-full grid-cols-5">
                     <TabsTrigger value="project">项目</TabsTrigger>
                     <TabsTrigger value="security">安全</TabsTrigger>
                     <TabsTrigger value="notification">通知</TabsTrigger>
                     <TabsTrigger value="display">显示</TabsTrigger>
+                    <TabsTrigger value="openclaw">OpenClaw</TabsTrigger>
                 </TabsList>
 
                 <!-- ============================================================ -->
@@ -442,6 +473,46 @@ async function copyText(text: string) {
                         </CardContent>
                     </Card>
                 </TabsContent>
+                <!-- ============================================================ -->
+                <!-- Tab 5: OpenClaw 集成 -->
+                <!-- ============================================================ -->
+                <TabsContent value="openclaw">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle class="text-base">OpenClaw 集成</CardTitle>
+                            <CardDescription>配置 OpenClaw 网关地址和认证令牌，启用一键创建 Agent 功能。</CardDescription>
+                        </CardHeader>
+                        <CardContent class="space-y-4">
+                            <div class="space-y-2">
+                                <Label for="s-oc-gateway-url">网关地址</Label>
+                                <Input id="s-oc-gateway-url" v-model="openclawGatewayUrl" type="text"
+                                    placeholder="http://127.0.0.1:18789" />
+                            </div>
+                            <div class="space-y-2">
+                                <Label for="s-oc-gateway-token">网关令牌</Label>
+                                <div class="flex gap-2">
+                                    <Input id="s-oc-gateway-token" v-model="openclawGatewayToken"
+                                        :type="showGatewayToken ? 'text' : 'password'"
+                                        placeholder="从 OpenClaw 配置文件获取"
+                                        class="flex-1 font-mono text-sm" />
+                                    <Button variant="outline" size="icon"
+                                        @click="showGatewayToken = !showGatewayToken"
+                                        :title="showGatewayToken ? '隐藏令牌' : '显示令牌'">
+                                        <component :is="showGatewayToken ? EyeOff : Eye" class="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            </div>
+                            <div class="flex justify-end">
+                                <Button size="sm" @click="saveOpenClaw" :disabled="!!saving">
+                                    <Loader2 v-if="saving === 'openclaw'" class="mr-1 h-3.5 w-3.5 animate-spin" />
+                                    <Save v-else class="mr-1 h-3.5 w-3.5" />
+                                    {{ saving === 'openclaw' ? '保存中...' : '保存' }}
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
             </Tabs>
         </template>
     </div>

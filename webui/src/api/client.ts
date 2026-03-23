@@ -608,6 +608,17 @@ export const adminConfigApi = {
     }),
 }
 
+// ── OpenClaw 集成设置 ──
+
+export async function getOpenClawSettings(): Promise<{ gateway_url: string, gateway_token: string }> {
+  const response = await api.get('/admin/settings/openclaw')
+  return response.data
+}
+
+export async function saveOpenClawSettings(data: { gateway_url: string, gateway_token: string }): Promise<void> {
+  await api.post('/admin/settings/openclaw', data)
+}
+
 // ── 提示词管理 ──────────────────────────────────────────
 
 export interface PromptTemplate {
