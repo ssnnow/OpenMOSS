@@ -9,6 +9,7 @@ from app.config import config
 from app.auth.dependencies import verify_admin
 
 router = APIRouter(prefix="/admin/config", tags=["Admin Config"])
+settings_router = APIRouter(prefix="/admin/settings", tags=["Admin Settings"])
 
 
 class ConfigUpdateRequest(BaseModel):
@@ -70,3 +71,37 @@ async def update_password(req: PasswordUpdateRequest, _=Depends(verify_admin)):
         raise HTTPException(status_code=403, detail="当前密码错误")
 
     return {"message": "密码修改成功"}
+
+
+# ── OpenClaw 设置 ──────────────────────────────────────────────────────────────
+
+class OpenClawSettingsRequest(BaseModel):
+    gateway_url: str = Field(..., description="OpenClaw 网关地址")
+    gateway_token: str = Field(..., description="OpenClaw 网关 Token")
+
+
+@settings_router.get("/openclaw", summary="获取 OpenClaw 网关配置")
+async def get_openclaw_settings(_=Depends(verify_admin)):
+    """
+    获取当前 OpenClaw 网关地址和 Token。
+    """
+    return {
+        "gateway_url": config.openclaw_gateway_url,
+        "gateway_token": config.openclaw_gateway_token,
+    }
+
+
+@settings_router.post("/openclaw", summary="保存 OpenClaw 网关配置")
+async def save_openclaw_settings(req: OpenClawSettingsRequest, _=Depends(verify_admin)):
+    """
+    保存 OpenClaw 网关地址和 Token。
+    立即写入 config.yaml 并更新内存配置，无需重启。
+    """
+    with config._lock:
+        if "openclaw" not in config._data:
+            config._data["openclaw"] = {}
+        config._data["openclaw"]["gateway_url"] = req.gateway_url
+        config._data["openclaw"]["gateway_token"] = req.gateway_token
+        config._save()
+
+    return {"message": "OpenClaw 配置已保存"}
